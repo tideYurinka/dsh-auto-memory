@@ -285,6 +285,8 @@ iter5 已取代其视觉，但**这套结构仍在代码里**、token 仍生效�
 | `Iter5Card` / `Iter5Stat` / `Iter5Tabs` / `Iter5Icon` / `Iter5Empty` | 卡片 / 统计块 / 页签（带键盘导航）/ 图标 / 空态 | iter5 |
 | `useIter5Data` | 带身份守卫与重试的数据加载 | iter5 |
 | `L(zh, en)` | 皮肤内文案双语（**必须走它**，勿硬编码中文） | 两代共用 |
+| `L3(zh, en, ja)` | 皮肤内三语文案（日文档缺失时回落 `L`） | 两代共用 |
+| `calendarEndIssuePre(start, end)` / `calendarTimeLabelPre(time)` | 日历结束时刻本地校验 / 时间列区间展示（`14:00 - 15:00`） | 两代共用 |
 
 ---
 
