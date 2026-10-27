@@ -184,7 +184,13 @@ console.log('[M8-3] 默认启用守卫')
   ok(hostSrc.includes('memoryHubEnabled: true'), 'index.js 默认 memoryHubEnabled: true(启用后消费 judgement-shadow/crossFeed)')
   ok(!hostSrc.includes('memoryHubEnabled: false'), '旧默认 false 已不存在')
   // 三处消费门与常开设施仍在(开关只门控消费,store 构建/restore/端点不受门控)
-  ok(hostSrc.includes('if (this.config.memoryHubEnabled === true && hub && hub.stores && hub.stores.episodic)'), 'crossFeed 消费门在位')
+  // ★2026-10-27：取样块抽成 `_hubObserveTurn` 后自然写成「!== true 早退」形态（与下面 judgement 门同款）。
+  //   守的语义不变：memoryHubEnabled 必须门控 episodic 取样 + crossFeed；断言的形状随实现同步。
+  ok(hostSrc.includes('this._hubObserveTurn(turn, runtime, probe.userText, probe.assistantText)'),
+    'crossFeed 消费入口在位（额度门前的每轮取样）')
+  ok(/if \(this\.config\.memoryHubEnabled !== true \|\| !hub \|\| !hub\.stores \|\| !hub\.stores\.episodic\) return/.test(hostSrc),
+    'crossFeed 消费门在位（!== true 早退，门控 episodic 取样）')
+  ok(/const cf = hub\.crossFeed\(cr\.episode\.sessionRef\)/.test(hostSrc), 'crossFeed 调用在位')
   // ★M8-R2（2026-09-23）：原为 2 处（喂数 hubFeedTick + 回写 hubFlushTick）。回写通路经用户拍板
   //   整段退役（docs/internal/M8-PATHWAY-REVIEW-20260923.md §6.5）⇒ 其门控随之消失，现余 1 处。
   //   判据不变：门控必须存在且各为「!== true 早退」；仅计数随有意移除的对象同步。

@@ -90,7 +90,8 @@ try {
       //   calendarEndIssuePre / calendarTimeLabelPre + CalendarTab 可选结束时间（两个时间输入带可见三语标签）
       //   与日视图区间展示 ⇒ 本锁随动。生成区无手工改动（build-iter5-skin --check SYNC-OK）；
       //   判据意图不变（经典区字节守恒）。重钉值 = 本套件自身表达式复算的 actual。
-      assert.equal(createHash('sha256').update(prior).digest('hex'), '0e5824567bcf99884020d5296d5b1804eb075420eff9edbf669082ced0e770db', 'classic client region bytes are conserved (interval control normalized back to 1/1440); pinned upstream baseline superseded by reviewed batches [R2026-10-27: #97 GUI 结束时间（共享校验/展示 + CalendarTab end 字段与可见标签）⇒ 按实测 actual 重钉 5226d738… → 0e582456…]')
+      // 本批（e13244c）又新增 panelAccessMessagePre 与三处中枢 GET 的 r.ok 检查 ⇒ 与 #97 叠加后的实测值 97236b0e…。
+      assert.equal(createHash('sha256').update(prior).digest('hex'), '97236b0e46224a9962e6df972f2c7c06c7532bb01ddabc071c388da5eadb4f6e', 'classic client region bytes are conserved (interval control normalized back to 1/1440); pinned upstream baseline superseded by reviewed batches [R131 = R130 + 2026-10-27 记忆中枢与沉淀额度解耦（取样改在 LLM 预算门之前，独立于每日额度/冷却）+ 面板守卫补三种合法直连形态（本机来源+白名单 Host、Host===socket.localAddress、来源===监听地址即 SSH 端口转发）+ 403 现场透传前端（新增 panelAccessMessagePre，三处中枢 GET 检查 r.ok）。★归因：只改手写区与生成源（skins/legacy/iter5-325.js.frozen 同步），未触碰生成块结构；按套件自身实测 actual 重钉。；R2026-10-23: v3.3.17 版本身份三件套（指纹行 + 应用内 CHANGELOG 3.3.17 条目，均在生成块之外）⇒ 按实测 actual 重钉 e31fa808… → 5226d738…；归因实测：还原 client.js 到 HEAD 后本套件 exit=0，判据过期非缺陷]')
     }
   }
   console.log('PASS archive interval UI/API/runtime agree on 15–1440, invalid patches preserve configuration')

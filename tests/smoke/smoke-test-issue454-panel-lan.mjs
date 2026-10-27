@@ -149,6 +149,57 @@ ok(body2.reason === 'not-in-allowlist-or-not-private', 'A7 已配置但未命中
 ok(body2.allowlistConfigured === true, 'A7 已配置时 allowlistConfigured=true')
 
 /* ══════════════════════════════════════════════════════════════
+   A8/A9. ★2026-10-27 追加：两种「合法却被判 403」的请求形态
+   ══════════════════════════════════════════════════════════════ */
+console.log('[#454] A8 本机来源 + 白名单 Host（旧实现只认 localhost 字面量）')
+const mkReqLocal = (addr, host, localAddress, extra = {}) => ({
+  socket: { remoteAddress: addr, localAddress },
+  headers: { host, ...extra },
+})
+ok(impl.isLoopbackRequest(mkReq('127.0.0.1', '192.168.77.2:3085'), impl.parseAllowedHostsPre('192.168.77.2')) === true,
+  '★A8 回环来源 + 白名单 Host ⇒ 放行（本机经端口转发/代理访问自己时就是这一形态；修前必 false）')
+ok(impl.isLoopbackRequest(mkReq('::ffff:127.0.0.1', '10.42.0.1:3085'), impl.parseAllowedHostsPre('10.42.0.1')) === true,
+  '★A8 IPv4-mapped 回环 + 白名单 Host ⇒ 放行')
+ok(impl.isLoopbackRequest(mkReq('127.0.0.1', 'evil.example:1'), impl.parseAllowedHostsPre('192.168.77.2')) === false,
+  '★A8 回环来源 + 非白名单 Host ⇒ 仍然拒绝（放宽只对白名单生效）')
+
+console.log('[#454] A9 直连本监听地址（来源私网、Host 就是请求到达的那块网卡）')
+ok(impl.isLoopbackRequest(mkReqLocal('192.168.77.1', '192.168.77.2:3085', '192.168.77.2'), []) === true,
+  '★A9 私网来源 + Host === socket.localAddress ⇒ 放行（与 DSH 核心「接受自身绑定地址」同口径，不需要先配白名单）')
+ok(impl.isLoopbackRequest(mkReqLocal('192.168.77.1', '192.168.77.2:3085', '::ffff:192.168.77.2'), []) === true,
+  '★A9 localAddress 为 IPv4-mapped 形态时同样命中')
+ok(impl.isLoopbackRequest(mkReqLocal('8.8.8.8', '192.168.77.2:3085', '192.168.77.2'), []) === false,
+  '★A9 公网来源 + Host === localAddress ⇒ 拒绝（直连判据不放公网进来）')
+ok(impl.isLoopbackRequest(mkReqLocal('192.168.77.1', '192.168.77.2:3085', '192.168.77.2', { 'sec-fetch-site': 'cross-site' }), []) === false,
+  '★A9 直连判据同样受 cross-site 拦截')
+ok(impl.isLoopbackRequest(mkReqLocal('192.168.77.1', '192.168.77.2:3085', '192.168.77.2', { origin: 'http://evil.example' }), []) === false,
+  '★A9 直连判据同样受 Origin 同源校验')
+ok(impl.isLoopbackRequest(mkReqLocal('192.168.77.1', '192.168.77.9:3085', '192.168.77.2'), []) === false,
+  '★A9 Host 与本监听地址不同且不在白名单 ⇒ 拒绝')
+ok(impl.isLoopbackRequest(mkReqLocal('127.0.0.1', '192.168.77.2:3085', '192.168.77.2'), []) === true,
+  '★A9 本机来源直连自身绑定地址 ⇒ 放行')
+
+console.log('[#454] A10 本机自连（来源地址 === 监听地址）—— SSH 端口转发形态')
+// 板端实录（2026-10-27 08:36）：`ssh -N -L 13085:10.42.0.1:3085 whale@<板>` 之后浏览器访问
+// http://127.0.0.1:13085，板子上的 sshd 从自身 10.42.0.1 连自己的 3085 ⇒
+// remoteAddress=10.42.0.1、localAddress=10.42.0.1、Host=127.0.0.1:13085 ⇒ 旧判据 403。
+const allow2 = impl.parseAllowedHostsPre('10.42.0.1,192.168.77.2')
+ok(impl.isLoopbackRequest(mkReqLocal('10.42.0.1', '127.0.0.1:13085', '10.42.0.1'), allow2) === true,
+  '★A10 来源===监听地址 + Host=127.0.0.1:<端口> ⇒ 放行（请求从未离开本机，等价回环；修前必 false）')
+ok(impl.isLoopbackRequest(mkReqLocal('10.42.0.1', 'localhost:13085', '10.42.0.1'), []) === true,
+  '★A10 同形态 + Host=localhost ⇒ 放行（不需要任何白名单）')
+ok(impl.isLoopbackRequest(mkReqLocal('::ffff:10.42.0.1', '127.0.0.1:13085', '10.42.0.1'), allow2) === true,
+  '★A10 映射形态的自身地址同样认作本机自连')
+ok(impl.isLoopbackRequest(mkReqLocal('10.42.0.1', 'evil.example:13085', '10.42.0.1'), allow2) === false,
+  '★A10 本机自连 + 非 localhost/非白名单 Host ⇒ 拒绝（放宽只覆盖本机形态）')
+ok(impl.isLoopbackRequest(mkReqLocal('10.42.0.1', '127.0.0.1:13085', '10.42.0.1', { 'sec-fetch-site': 'cross-site' }), allow2) === false,
+  '★A10 本机自连同样受 cross-site 拦截')
+ok(impl.isLoopbackRequest(mkReqLocal('10.42.0.1', '127.0.0.1:13085', '10.42.0.1', { origin: 'http://evil.example' }), allow2) === false,
+  '★A10 本机自连同样受 Origin 同源校验')
+ok(impl.isLoopbackRequest(mkReqLocal('10.42.0.217', '127.0.0.1:13085', '10.42.0.1'), allow2) === false,
+  '★A10 远端客户端（来源≠监听地址）伪造 localhost Host ⇒ 拒绝（这条是宽松判据的边界）')
+
+/* ══════════════════════════════════════════════════════════════
    B. 接线验证（源码级，标注为「守卫」而非功能证据）
    ══════════════════════════════════════════════════════════════ */
 console.log('[#454] B. 接线守卫（源码结构；功能证据在 A 段）')
@@ -206,6 +257,26 @@ const MUTATIONS = [
     }),
     expect: (m) => m.isLoopbackRequest(mkReq('192.168.1.9', '192.168.1.5:35117'), []) === true,
   },
+  {
+    name: 'M7 私网档去掉「直连自身监听地址」判据',
+    patch: () => build({ isLoopbackRequest: extractFn('isLoopbackRequest').replace('  if (listensOnHost()) return originCheck()\n', '') }),
+    expect: (m) => m.isLoopbackRequest(mkReqLocal('192.168.1.9', '192.168.1.5:35117', '192.168.1.5'), []) === true,
+  },
+  {
+    name: 'M8 本机档去掉「白名单 Host」判据（合法请求重新变 403）',
+    patch: () => build({ isLoopbackRequest: extractFn('isLoopbackRequest').replace('    if (Array.isArray(allowedHosts) && allowedHosts.length && hostAllowedPre(hostUrl.hostname, hostUrl.host, allowedHosts)) return originCheck()\n', '') }),
+    // 删掉的是**放行**规则 ⇒ 变异方向是「更严」，判据要翻成 false 才算抓到。
+    expect: (m) => m.isLoopbackRequest(mkReq('127.0.0.1', '192.168.1.5:35117'), impl.parseAllowedHostsPre('192.168.1.5')) === false,
+  },
+  {
+    name: 'M9 去掉「来源===监听地址」判据（SSH 端口转发重新 403）',
+    patch: () => build({
+      isLoopbackRequest: extractFn('isLoopbackRequest').replace(
+        '  const selfOriginated = isLoopbackAddressPre(address) ||\n    (typeof address === \'string\' && address !== \'\' && bareAddr(address) === localAddr)',
+        '  const selfOriginated = isLoopbackAddressPre(address)'),
+    }),
+    expect: (m) => m.isLoopbackRequest(mkReqLocal('10.42.0.1', '127.0.0.1:13085', '10.42.0.1'), impl.parseAllowedHostsPre('10.42.0.1,192.168.77.2')) === false,
+  },
 ]
 
 let mutated = 0
@@ -226,6 +297,35 @@ ok(mutated === MUTATIONS.length, 'C9 变异捕获率 ' + mutated + '/' + MUTATIO
 ok(impl.isLoopbackRequest(mkReq('192.168.1.9', '192.168.1.5:35117'), allow) === true, 'C10 还原后：白名单放行仍然成立（变异不是恒红）')
 ok(impl.isLoopbackRequest(mkReq('8.8.8.8', '192.168.1.5:35117'), allow) === false, 'C10 还原后：公网仍然拒绝')
 ok(impl.parseAllowedHostsPre('*.lan').length === 1, 'C10 还原后：通配符仍然被保留')
+
+/* ══════════════════════════════════════════════════════════════
+   D. ★2026-10-27：403 现场必须能被用户看见（前端不再只显示一句 error）
+   ══════════════════════════════════════════════════════════════ */
+console.log('[#454] D. 前端错误可诊断性')
+const CLIENT = readFileSync(path.join(ROOT, 'lib', 'client.js'), 'utf8')
+function extractClientFn(name) {
+  const anchor = 'function ' + name + '('
+  const start = CLIENT.indexOf(anchor)
+  assert(start >= 0, 'client.js 里找不到 ' + name)
+  const braceStart = CLIENT.indexOf('{', start)
+  let depth = 0
+  for (let i = braceStart; i < CLIENT.length; i++) {
+    const c = CLIENT[i]
+    if (c === '{') depth++
+    else if (c === '}') { depth--; if (depth === 0) return CLIENT.slice(start, i + 1) }
+  }
+  throw new Error('花括号未配平: ' + name)
+}
+const msgFn = new Function('L', extractClientFn('panelAccessMessagePre') + '\nreturn panelAccessMessagePre')((zh) => zh)
+const full = msgFn({ error: 'forbidden: panel-access', reason: 'not-in-allowlist-or-not-private', host: '192.168.1.5:35117', remoteAddress: '192.168.1.9', hint: '请设置 DSH_AUTO_MEMORY_ALLOWED_HOSTS=192.168.1.5' })
+ok(full.includes('panel-access') && full.includes('not-in-allowlist-or-not-private') && full.includes('Host=192.168.1.5:35117') && full.includes('192.168.1.9'),
+  '★D1 403 错误串带判据 / Host / 来源地址（排障一次到位）', full)
+ok(full.includes('DSH_AUTO_MEMORY_ALLOWED_HOSTS'), '★D2 403 错误串带可执行 hint', full)
+ok(msgFn({ error: 'boom' }) === 'boom', 'D3 非 403 错误原样透传')
+ok(msgFn({}, 'HTTP 500') === 'HTTP 500', 'D4 无 error 字段时回退到调用方给的文案')
+const hubChecks = (CLIENT.match(/if \(!r\.ok\) throw new Error\(panelAccessMessagePre\(j\)/g) || []).length
+ok(hubChecks === 3, '★D5 三处「记忆中枢」GET 都检查 r.ok（旧写法把 403 诊断体当数据 ⇒ 页面显示「暂无数据」）', 'got=' + hubChecks)
+ok(/throw new Error\(panelAccessMessagePre\(body\) \|\| \('GET '/.test(CLIENT), '★D6 apiGet 走同一份人话错误')
 
 /* ══════════════════════════════════════════════════════════════ */
 console.log('')

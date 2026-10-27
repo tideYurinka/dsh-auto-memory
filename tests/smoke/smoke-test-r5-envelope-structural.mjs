@@ -135,5 +135,26 @@ console.log('\n[R8] 确定性与幂等')
   ok(a.trim() === '开始实施', '★ 混合序列只剩真人原话', JSON.stringify(a))
 }
 
+console.log('\n[R9] ★ 2026-10-27 真机追加：运行时采样头（板端 episode intent 实录）')
+{
+  // 板端 ~/.dsh/memory/hub/episodes.json 实录：两条 episode 的 intent 就是这一行
+  //   "Time sampled while preparing turn 16, step 1: 2026-10-25T15:04:52+08:00[Asia/Shanghai]"
+  // 之后第 3 条同样以它开头 ⇒ 旧剥离器认不出（head noun "time" 不在词族内）。
+  const SAMPLE = 'Time sampled while preparing turn 16, step 1: 2026-10-25T15:04:52+08:00[Asia/Shanghai]'
+  const TZ = 'Browser time zone for this request: Asia/Shanghai. Interpret otherwise-unqualified dates and times in this zone.'
+  const ELAPSED = 'Elapsed since the preceding step context: 10m 1s.'
+  ok(stripRuntimeIntentPre(SAMPLE).trim() === '', '★R9-1 采样头整行被剥离（旧实现原样保留 ⇒ 成为 episode intent）', JSON.stringify(stripRuntimeIntentPre(SAMPLE)))
+  ok(stripRuntimeIntentPre(TZ).trim() === '', '★R9-2 时区声明行被剥离')
+  ok(stripRuntimeIntentPre(ELAPSED).trim() === '', '★R9-3 步间耗时行被剥离')
+  ok(stripRuntimeIntentPre(SAMPLE + '\n' + TZ + '\n帮我把中枢的喂数解耦').trim() === '帮我把中枢的喂数解耦',
+    '★R9-4 采样头 + 真人问题 ⇒ 只剩真人问题')
+  // 反向锁：真人自己提到「时间采样」这句话不能被吞（位置约束 + 只认行首形态）
+  const human = 'Time sampled while preparing turn 16, step 1 这行是什么意思？'
+  ok(stripRuntimeIntentPre(human).trim() === human, '★R9-5 真人引用同款措辞（无 ": <时间戳>" 形态）逐字保留', JSON.stringify(stripRuntimeIntentPre(human)))
+  // 判据可单独断言
+  ok(RUNTIME_ENVELOPE_PRE_V1.isEnvelopeLinePre(SAMPLE) === true, '★R9-6 判据可直接命中采样头')
+  ok(RUNTIME_ENVELOPE_PRE_V1.isEnvelopeLinePre('Time is money, turn 3: go') === false, '★R9-7 判据不误伤含 time/turn 的普通句')
+}
+
 console.log(`\n[R5-envelope-structural] ${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)

@@ -2208,7 +2208,11 @@
       var setActMsg = actMsgPair[1]
       useEffect(function () {
         var alive = true
-        fetch(API.memoryHub).then(function (r) { return r.json() }).then(function (j) {
+        fetch(API.memoryHub).then(function (r) { return r.json().then(function (j) {
+          // 403 时后端回的是诊断体（error/hint），旧写法把它当数据 ⇒ 中枢页显示「暂无数据」而不是报错。
+          if (!r.ok) throw new Error(panelAccessMessagePre(j) || ('HTTP ' + r.status))
+          return j
+        }) }).then(function (j) {
           if (alive) setData(j || null)
         }).catch(function (e) { if (alive) setErr(String(e && e.message)) })
         return function () { alive = false }
